@@ -1,0 +1,36 @@
+# Build
+build/
+
+# Test media
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.wmv
+*.flv
+*.webm
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.gif
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.cache/
+compile_commands.json
+
+# ImGui state
+imgui.ini
+
+# Logs
+*.out
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
