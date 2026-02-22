@@ -51,8 +51,13 @@ void TimelinePlayback::play() {
 
     if (m_state == State::Playing) return;
 
-    // Start from stopped
-    m_masterClock.set(0.0);
+    // Start from stopped — preserve scrubbed position (set by seek())
+    double startPos = m_masterClock.get();
+    double duration = getDuration();
+    if (startPos < 0.0 || (duration > 0.0 && startPos >= duration)) {
+        startPos = 0.0;
+    }
+    m_masterClock.set(startPos);
     m_masterClock.resume();
     m_firstFrameReceived = false;
     m_audioStarted = false;
@@ -158,7 +163,10 @@ void TimelinePlayback::seek(double timelineSeconds) {
 void TimelinePlayback::update() {
     if (!m_timeline || m_state == State::Stopped) return;
 
-    double currentTime = getCurrentTime();
+    // Use raw master clock for clip management decisions — NOT getPlaybackClock()
+    // which subtracts SDL buffer latency and can report a time before a clip
+    // transition point, causing the transition to immediately reverse.
+    double currentTime = m_masterClock.get();
     double lookahead = currentTime + 1.0;
 
     std::unordered_set<uint32_t> neededClipIds;
@@ -188,6 +196,13 @@ void TimelinePlayback::update() {
             toRemove.push_back(clipId);
         }
     }
+
+    // Clear mixer sources BEFORE destroying any players to prevent the audio
+    // callback from accessing freed AudioFrameQueue memory (use-after-free).
+    if (!toRemove.empty()) {
+        m_audioMixer.clearSources();
+    }
+
     for (uint32_t clipId : toRemove) {
         deactivateClip(clipId);
     }
@@ -202,6 +217,12 @@ void TimelinePlayback::update() {
 
     if (sourcesChanged) {
         rebuildAudioSources();
+
+        // Lock clock to prevent stale pre-seek audio frames from newly
+        // activated players from overwriting the master clock.
+        if (m_audioMixer.hasSources()) {
+            m_audioMixer.lockClockForSeek(currentTime);
+        }
 
         if (m_audioOutput && !m_audioStarted && m_state == State::Playing && m_audioMixer.hasSources()) {
             m_audioOutput->resume();
@@ -451,10 +472,6 @@ void TimelinePlayback::activateClip(uint32_t clipId) {
     if (currentTime >= clip->timelineStart) {
         double sourceTime = clip->toSourceTime(currentTime);
         player->seek(sourceTime);
-        // Lock clock so stale pre-seek audio frames don't overwrite the clock
-        if (needAudio) {
-            m_audioMixer.lockClockForSeek(currentTime);
-        }
     }
 
     if (m_verbose) {

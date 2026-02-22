@@ -97,17 +97,22 @@ int AudioMixer::readSource(AudioMixSource& src, float* buf, int frames, Clock& m
                 timelineTime = (pts - src.clip->sourceIn) + src.clip->timelineStart;
             }
 
-            // If clock is locked (post-seek), only update once audio PTS is
-            // near the seek target — otherwise stale pre-seek frames overwrite it.
             if (m_clockLocked) {
                 auto elapsed = std::chrono::steady_clock::now() - m_clockLockTime;
                 bool timedOut = elapsed > std::chrono::milliseconds(500);
                 bool ptsNearTarget = std::abs(timelineTime - m_seekTargetTime) < 1.0;
                 if (ptsNearTarget || timedOut) {
+                    // Seek completed — unlock and start playing
                     m_clockLocked = false;
                     masterClock.set(timelineTime);
+                } else {
+                    // Stale pre-seek frame — discard it entirely.
+                    // This prevents wrong audio from playing and wrong PTS
+                    // from being pushed into the SDL buffer.
+                    src.queue->pop();
+                    src.frameByteOffset = 0;
+                    continue;  // Try next frame
                 }
-                // else: skip this clock update — stale frame
             } else {
                 masterClock.set(timelineTime);
             }
