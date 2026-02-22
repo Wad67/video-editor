@@ -89,32 +89,43 @@ int AudioMixer::readSource(AudioMixSource& src, float* buf, int frames, Clock& m
 
         src.currentFrame = frame;
 
-        // Update master clock from audio PTS at the start of each new frame
         if (src.frameByteOffset == 0 && frame->pts != AV_NOPTS_VALUE) {
             double pts = frame->pts * av_q2d(src.timeBase);
+
+            // Skip frames before the clip's source range. After a seek,
+            // FFmpeg decodes from the nearest keyframe which may be seconds
+            // before sourceIn. These pre-roll frames must not be played.
+            if (src.clip && pts < src.clip->sourceIn - 0.05) {
+                src.queue->pop();
+                src.frameByteOffset = 0;
+                continue;
+            }
+
             double timelineTime = pts;
             if (src.clip) {
                 timelineTime = (pts - src.clip->sourceIn) + src.clip->timelineStart;
             }
 
+            // During an explicit seek, discard stale pre-seek frames
+            // (from before the demux thread processes the seek request).
             if (m_clockLocked) {
                 auto elapsed = std::chrono::steady_clock::now() - m_clockLockTime;
-                bool timedOut = elapsed > std::chrono::milliseconds(500);
-                bool ptsNearTarget = std::abs(timelineTime - m_seekTargetTime) < 1.0;
-                if (ptsNearTarget || timedOut) {
-                    // Seek completed — unlock and start playing
+                bool timedOut = elapsed > std::chrono::milliseconds(1000);
+                // Accept frames at or past the seek target (with tolerance
+                // for keyframe-based seeking landing a bit before target).
+                bool ptsReasonable = timelineTime >= m_seekTargetTime - 3.0;
+                if (ptsReasonable || timedOut) {
                     m_clockLocked = false;
                     masterClock.set(timelineTime);
                 } else {
-                    // Stale pre-seek frame — discard it entirely.
-                    // This prevents wrong audio from playing and wrong PTS
-                    // from being pushed into the SDL buffer.
+                    // Definitely stale — discard
                     src.queue->pop();
                     src.frameByteOffset = 0;
-                    continue;  // Try next frame
+                    continue;
                 }
             } else {
-                masterClock.set(timelineTime);
+                // Normal playback — update clock but never jump backward.
+                masterClock.setIfForward(timelineTime);
             }
         }
 

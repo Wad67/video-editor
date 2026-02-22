@@ -6,6 +6,9 @@
 class Clock {
 public:
     void set(double pts);
+    // Only update if pts >= current time - tolerance.
+    // Prevents the audio thread from ever jumping the clock backward.
+    void setIfForward(double pts, double tolerance = 0.1);
     double get() const;
     void pause();
     void resume();

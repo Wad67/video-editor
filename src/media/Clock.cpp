@@ -5,6 +5,14 @@ void Clock::set(double pts) {
     m_lastUpdate.store(now());
 }
 
+void Clock::setIfForward(double pts, double tolerance) {
+    double current = get();
+    if (pts >= current - tolerance) {
+        m_pts.store(pts);
+        m_lastUpdate.store(now());
+    }
+}
+
 double Clock::get() const {
     if (m_paused.load()) return m_pts.load();
     double elapsed = now() - m_lastUpdate.load();

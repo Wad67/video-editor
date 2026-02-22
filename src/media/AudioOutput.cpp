@@ -88,10 +88,13 @@ double AudioOutput::getPlaybackClock() const {
     double rawClock = clock->get();
 
     // Subtract the latency of audio data buffered in SDL but not yet played.
+    // Cap at 200ms — during seeks/transitions, silence fills the SDL buffer
+    // and unbounded subtraction makes the clock drift far backward.
     if (m_stream && m_sampleRate > 0) {
         int queued = SDL_GetAudioStreamQueued(m_stream);
         double bufferedSeconds = static_cast<double>(queued) /
             (m_sampleRate * m_channels * sizeof(float));
+        if (bufferedSeconds > 0.2) bufferedSeconds = 0.2;
         rawClock -= bufferedSeconds;
     }
 

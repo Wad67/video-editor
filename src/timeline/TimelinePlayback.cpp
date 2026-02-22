@@ -216,13 +216,11 @@ void TimelinePlayback::update() {
     }
 
     if (sourcesChanged) {
+        // No clock lock needed here — readSource uses:
+        //   1) sourceIn check to discard pre-roll frames from keyframe seeking
+        //   2) setIfForward() to prevent the clock from ever jumping backward
+        // The clock lock is only engaged by explicit seek() calls.
         rebuildAudioSources();
-
-        // Lock clock to prevent stale pre-seek audio frames from newly
-        // activated players from overwriting the master clock.
-        if (m_audioMixer.hasSources()) {
-            m_audioMixer.lockClockForSeek(currentTime);
-        }
 
         if (m_audioOutput && !m_audioStarted && m_state == State::Playing && m_audioMixer.hasSources()) {
             m_audioOutput->resume();
