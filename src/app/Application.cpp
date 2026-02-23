@@ -215,6 +215,23 @@ bool Application::renderFrame() {
             if (ImGui::MenuItem("Open", "Ctrl+O")) {
                 m_fileDialog.open();
             }
+            if (ImGui::MenuItem("Export...", "Ctrl+E",
+                                false, m_timeline.getTotalDuration() > 0)) {
+                m_showExportDialog = true;
+                // Pre-populate settings from first video asset
+                m_exportSettings.endTime = m_timeline.getTotalDuration();
+                for (auto& [id, asset] : m_timeline.getAllAssets()) {
+                    if (asset.hasVideo) {
+                        m_exportSettings.width = asset.width;
+                        m_exportSettings.height = asset.height;
+                        m_exportSettings.fps = asset.fps;
+                        break;
+                    }
+                }
+                m_exportDialog.setSourceInfo(
+                    m_exportSettings.width, m_exportSettings.height,
+                    m_exportSettings.fps);
+            }
             ImGui::Separator();
             if (ImGui::MenuItem("Exit", "Alt+F4")) {
                 m_running = false;
@@ -288,6 +305,20 @@ bool Application::renderFrame() {
     // File dialog
     m_fileDialog.render();
 
+    // Export dialog
+    if (m_showExportDialog) {
+        if (m_exportDialog.render(m_exportSettings, m_showExportDialog)) {
+            // User clicked Export — start the export session
+            m_exportSession = std::make_unique<ExportSession>();
+            m_exportSession->start(m_timeline, m_exportSettings);
+        }
+    }
+
+    // Export progress
+    if (m_exportSession) {
+        m_exportDialog.renderProgress(*m_exportSession);
+    }
+
     m_imguiLayer.endFrame();
 
     // Record command buffer
@@ -357,6 +388,13 @@ void Application::handleResize() {
 }
 
 void Application::shutdown() {
+    // Cancel any running export
+    if (m_exportSession) {
+        m_exportSession->cancel();
+        m_exportSession->wait();
+        m_exportSession.reset();
+    }
+
     m_timelinePlayback.stop();
     m_audioOutput.shutdown();
 

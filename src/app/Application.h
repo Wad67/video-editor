@@ -9,9 +9,13 @@
 #include "ui/FileDialog.h"
 #include "ui/TimelineUI.h"
 #include "ui/ClipPropertiesUI.h"
+#include "ui/ExportDialog.h"
+#include "export/ExportSession.h"
+#include "export/ExportSettings.h"
 #include "media/AudioOutput.h"
 #include "timeline/Timeline.h"
 #include "timeline/TimelinePlayback.h"
+#include <memory>
 
 class Application {
 public:
@@ -46,6 +50,10 @@ private:
     FileDialog m_fileDialog;
     TimelineUI m_timelineUI;
     ClipPropertiesUI m_clipPropertiesUI;
+    ExportDialog m_exportDialog;
+    std::unique_ptr<ExportSession> m_exportSession;
+    ExportSettings m_exportSettings;
+    bool m_showExportDialog = false;
 
     bool m_running = false;
     bool m_minimized = false;
